@@ -22,9 +22,30 @@ export default defineConfig([
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
     },
-    ignores: ["node_modules/", "dist/", "coverage/"],
   },
   tseslint.configs.recommended,
   eslintPluginUnicorn.configs.recommended,
   eslintConfigPrettier,
+  {
+    ignores: [
+      // Dependencies
+      "node_modules/",
+
+      // Build output
+      "dist/",
+      "build/",
+
+      // TypeScript cache
+      "*.tsbuildinfo",
+
+      // Logs
+      "*.log",
+
+      // Test coverage
+      "coverage/",
+
+      // Lockfile
+      "pnpm-lock.yaml",
+    ],
+  },
 ]);

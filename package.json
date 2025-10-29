@@ -1,25 +1,55 @@
 {
   "name": "zod-to-mongo-schema",
   "version": "0.0.1",
-  "description": "",
-  "main": "index.js",
+  "description": "Converts a Zod schema to a MongoDB-compatible JSON Schema.",
+  "keywords": [
+    "zod",
+    "mongodb",
+    "schema",
+    "json schema",
+    "draft 4",
+    "convert",
+    "annotation",
+    "validation",
+    "typescript"
+  ],
+  "author": "Udoh Jeremiah <udohjeremiah.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/udohjeremiah/zod-to-mongo-schema"
+  },
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "lint": "eslint . --ext .ts,.mts,.js,.mjs",
     "lint:fix": "eslint . --ext .ts,.mts,.js,.mjs --fix",
-    "test": "echo \"No tests yet — all good!\"",
+    "test": "vitest",
+    "build": "tsc",
     "prepare": "husky"
   },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
   "devDependencies": {
     "@commitlint/cli": "^20.1.0",
     "@commitlint/config-conventional": "^20.0.0",
     "@eslint/js": "^9.38.0",
+    "@types/node": "^24.9.2",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
+    "commitizen": "^4.3.1",
+    "cz-conventional-changelog": "^3.3.0",
     "eslint": "^9.38.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-simple-import-sort": "^12.1.1",
@@ -27,6 +57,17 @@
     "globals": "^16.4.0",
     "husky": "^9.1.7",
     "prettier": "^3.6.2",
-    "typescript-eslint": "^8.46.2"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vitest": "^4.0.5",
+    "zod": "^4.1.12"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
   }
 }
