@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  format:
+    name: 💅 Prettier
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v5
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: 📥 Install deps
+        uses: bahmutov/npm-install@v1
+
+      - name: 💅 Check formatting
+        run: npm run format
+
+  lint:
+    name: ⬣ ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v5
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: 📥 Install deps
+        uses: bahmutov/npm-install@v1
+
+      - name: 🔬 Lint
+        run: npm run lint
+
+  test:
+    name: 🧪 Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v5
+
+      - name: ⎔ Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: 📥 Install deps
+        uses: bahmutov/npm-install@v1
+
+      - name: 🧪 Run tests
+        run: npm test -- --run
+
+  build:
+    name: 🚀 Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v5
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: 📥 Install deps
+        uses: bahmutov/npm-install@v1
+
+      - name: 🚀 Build
+        run: npm run build
+
+  commitlint:
+    name: 🧩 commitlint
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v5
+      - name: 🧩 Validate commits
+        uses: wagoid/commitlint-github-action@v6
