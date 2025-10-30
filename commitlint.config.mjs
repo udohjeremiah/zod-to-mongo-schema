@@ -1,5 +1,3 @@
-import { defineConfig } from "@commitlint/types";
-
-export default defineConfig({
+export default {
   extends: ["@commitlint/config-conventional"],
-});
+};

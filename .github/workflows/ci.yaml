@@ -20,10 +20,13 @@ jobs:
           node-version: 24
 
       - name: 📥 Install deps
-        uses: bahmutov/npm-install@v1
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+          run_install: true
 
       - name: 💅 Check formatting
-        run: npm run format
+        run: pnpm format
 
   lint:
     name: ⬣ ESLint
@@ -38,10 +41,13 @@ jobs:
           node-version: 24
 
       - name: 📥 Install deps
-        uses: bahmutov/npm-install@v1
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+          run_install: true
 
       - name: 🔬 Lint
-        run: npm run lint
+        run: pnpm lint
 
   test:
     name: 🧪 Vitest
@@ -56,10 +62,13 @@ jobs:
           node-version: 24
 
       - name: 📥 Install deps
-        uses: bahmutov/npm-install@v1
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+          run_install: true
 
       - name: 🧪 Run tests
-        run: npm test -- --run
+        run: pnpm test -- --run
 
   build:
     name: 🚀 Build
@@ -74,10 +83,13 @@ jobs:
           node-version: 24
 
       - name: 📥 Install deps
-        uses: bahmutov/npm-install@v1
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+          run_install: true
 
       - name: 🚀 Build
-        run: npm run build
+        run: pnpm build
 
   commitlint:
     name: 🧩 commitlint
@@ -86,5 +98,6 @@ jobs:
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v5
+
       - name: 🧩 Validate commits
         uses: wagoid/commitlint-github-action@v6
