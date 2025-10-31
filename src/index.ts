@@ -44,11 +44,11 @@ function _typeForInteger(json: Record<string, any>) {
   }
 
   // If a custom range is specified, then let the range decide.
-  // Zod automatically adds `minimum` and `maximum` for `int32`, `int`, and
-  // `number().int()`, even if the user only specifies one of them. In such
-  // cases, the "other" boundary is artificially added by Zod. We want to
-  // detect those automatically added fields and remove them so that MongoDB
-  // enforces its default min/max limits for the type.
+  // Zod automatically adds `minimum` and `maximum` for `int32` and `int`,
+  // even if the user only specifies one of them. In such cases, the "other"
+  // boundary is artificially added by Zod. We want to detect those
+  // automatically added fields and remove them so that MongoDB enforces its
+  // default min/max limits for the type.
   if (min >= INT32_MIN && max <= INT32_MAX) {
     if (json.minimum === INT32_MIN) delete json.minimum;
     if (json.maximum === INT32_MAX) delete json.maximum;
@@ -81,12 +81,6 @@ function _sanitizeSchema(schema: any): any {
     if (UNSUPPORTED_KEYS.includes(key as any)) continue;
 
     sanitized[key] = _sanitizeSchema(value);
-  }
-
-  // Handle JSON Schema `boolean` to MongoDB `bool`
-  if (sanitized.type === "boolean" || sanitized.bsonType === "boolean") {
-    sanitized.bsonType = "bool";
-    delete sanitized.type;
   }
 
   // Handle numeric type conversion

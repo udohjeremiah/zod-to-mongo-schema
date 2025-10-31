@@ -33,18 +33,12 @@ describe("zod-to-mongo-schema", () => {
       properties: {
         name: { type: "string" },
         age: { type: "number" },
-        isStudent: { bsonType: "bool" },
+        isStudent: { type: "boolean" },
         hobbies: { type: "array", items: { type: "string" } },
       },
       required: ["name", "age", "isStudent", "hobbies"],
       additionalProperties: false,
     });
-  });
-
-  it("converts deeply nested `boolean` to `bool`", () => {
-    const schema = z.object({ a: z.object({ b: z.boolean() }) });
-    const r = zodToMongoSchema(schema);
-    expect(r.properties.a.properties.b.bsonType).toBe("bool");
   });
 
   it("converts `integer` type to `int`/`long` based on range", () => {
@@ -226,7 +220,7 @@ describe("zod-to-mongo-schema", () => {
     expect(r2.properties.nested).toMatchObject({
       additionalProperties: true,
       properties: {
-        baz: { bsonType: "bool" },
+        baz: { type: "boolean" },
       },
     });
   });
