@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import z from "zod";
 
 import zodToMongoSchema from "./index.js";
 
@@ -74,14 +74,26 @@ describe("zod-to-mongo-schema", () => {
     expect(r.properties.val.type).toBe("number");
   });
 
-  it("keeps custom min/max for number", () => {
-    const schema = z.object({ age: z.number().min(0).max(100) });
+  it("keeps custom min/max for `int`/`long`/`number`", () => {
+    const schema = z.object({
+      smallInt: z.int32().min(-100).max(100),
+      largeInt: z.int().min(-5_000_000_000).max(5_000_000_000),
+      number: z.number().min(0.1).max(99.9),
+    });
 
     const r = zodToMongoSchema(schema);
 
-    expect(r.properties.age.type).toBe("number");
-    expect(r.properties.age.minimum).toBe(0);
-    expect(r.properties.age.maximum).toBe(100);
+    expect(r.properties.smallInt.bsonType).toBe("int");
+    expect(r.properties.smallInt.minimum).toBe(-100);
+    expect(r.properties.smallInt.maximum).toBe(100);
+
+    expect(r.properties.largeInt.bsonType).toBe("long");
+    expect(r.properties.largeInt.minimum).toBe(-5_000_000_000);
+    expect(r.properties.largeInt.maximum).toBe(5_000_000_000);
+
+    expect(r.properties.number.type).toBe("number");
+    expect(r.properties.number.minimum).toBe(0.1);
+    expect(r.properties.number.maximum).toBe(99.9);
   });
 
   it("preserves `.meta()` fields for title/description", () => {

@@ -25,11 +25,14 @@ function _typeForInteger(json: Record<string, any>) {
   const INT32_MAX = 2_147_483_647; // 2^31 - 1
   const INT53_MIN = -9_007_199_254_740_991; // -(2^53 - 1)
   const INT53_MAX = 9_007_199_254_740_991; // 2^53 - 1
+  const INT64_MIN = -9_223_372_036_854_775_808n; // -(2^63)
+  const INT64_MAX = 9_223_372_036_854_775_808n; // 2^63 - 1
 
   const min = json.minimum ?? INT53_MIN;
   const max = json.maximum ?? INT53_MAX;
 
-  // Default or undefined range uses appropriate BSON integer type
+  // If the range is exactly the standard 32-bit or 53-bit, or no
+  // custom range was specified, then let MongoDB enforce the limits.
   if (
     (min === INT32_MIN && max === INT32_MAX) ||
     (min === INT53_MIN && max === INT53_MAX) ||
@@ -40,7 +43,16 @@ function _typeForInteger(json: Record<string, any>) {
     return min < INT32_MIN || max > INT32_MAX ? "long" : "int";
   }
 
-  // Custom range falls back to generic number
+  // If a custom range is specified, then let the range decide
+  if (min >= INT32_MIN && max <= INT32_MAX) {
+    return "int";
+  }
+
+  if (BigInt(min) >= INT64_MIN && BigInt(max) <= INT64_MAX) {
+    return "long";
+  }
+
+  // Integers beyond 64-bit integers (rare)
   return "number";
 }
 
