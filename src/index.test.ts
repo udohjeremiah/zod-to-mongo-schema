@@ -77,7 +77,9 @@ describe("zod-to-mongo-schema", () => {
   it("keeps custom min/max for `int`/`long`/`number`", () => {
     const schema = z.object({
       smallInt: z.int32().min(-100).max(100),
+      minSmallInt: z.int32().min(0),
       largeInt: z.int().min(-5_000_000_000).max(5_000_000_000),
+      maxLargeInt: z.int().max(50),
       number: z.number().min(0.1).max(99.9),
     });
 
@@ -87,9 +89,17 @@ describe("zod-to-mongo-schema", () => {
     expect(r.properties.smallInt.minimum).toBe(-100);
     expect(r.properties.smallInt.maximum).toBe(100);
 
+    expect(r.properties.minSmallInt.bsonType).toBe("int");
+    expect(r.properties.minSmallInt.minimum).toBe(0);
+    expect(r.properties.minSmallInt.maximum).toBeUndefined();
+
     expect(r.properties.largeInt.bsonType).toBe("long");
     expect(r.properties.largeInt.minimum).toBe(-5_000_000_000);
     expect(r.properties.largeInt.maximum).toBe(5_000_000_000);
+
+    expect(r.properties.maxLargeInt.bsonType).toBe("long");
+    expect(r.properties.maxLargeInt.minimum).toBeUndefined();
+    expect(r.properties.maxLargeInt.maximum).toBe(50);
 
     expect(r.properties.number.type).toBe("number");
     expect(r.properties.number.minimum).toBe(0.1);
