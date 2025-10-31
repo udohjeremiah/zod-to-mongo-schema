@@ -76,7 +76,7 @@ console.log(JSON.stringify(mongoSchema, null, 2));
       "minimum": 18
     },
     "isAdmin": {
-      "bsonType": "bool"
+      "type": "boolean"
     }
   },
   "required": ["name", "age", "isAdmin"],
