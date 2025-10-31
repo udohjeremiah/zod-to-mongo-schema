@@ -516,4 +516,4 @@ To learn more about MongoDB JSON Schema keywords, check out the
 
 I wrote a detailed post about why I built this library, the challenges I faced,
 and the design decisions that shaped it.
-[Read the full article](https://udohjeremiah.com/how-to-convert-a-zod-schema-to-mongodb-json-schema).
+[Read the full article](https://udohjeremiah.com/blog/how-to-convert-a-zod-schema-to-mongodb-json-schema).
