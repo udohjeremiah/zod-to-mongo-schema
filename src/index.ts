@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import z from "zod";
+import * as z4 from "zod/v4/core";
 
 /**
  * JSON Schema keys not supported by MongoDB's `$jsonSchema` operator
@@ -110,11 +110,11 @@ function _sanitizeSchema(schema: any): any {
  * @param zodSchema
  * @returns A MongoDB-compatible JSON Schema object ready for use in `$jsonSchema` validation.
  */
-export default function zodToMongoSchema(zodSchema: z.ZodType) {
+export default function zodToMongoSchema(zodSchema: z4.$ZodType) {
   if (!zodSchema) return {};
 
   // Convert to JSON Schema Draft 4
-  const rawJsonSchema = z.toJSONSchema(zodSchema, { target: "draft-4" });
+  const rawJsonSchema = z4.toJSONSchema(zodSchema, { target: "draft-4" });
 
   // Sanitize to make it MongoDB-compatible
   return _sanitizeSchema(rawJsonSchema);
