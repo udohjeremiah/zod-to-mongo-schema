@@ -163,11 +163,22 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-[MongoDB doesn't accept all valid JSON Schema keywords](https://www.mongodb.com/docs/manual/reference/operator/query/jsonSchema/#omissions).
-If encountered, they will be removed:
+MongoDB's `$jsonSchema` validation does not support the following JSON Schema
+keywords:
+
+- `$ref`
+- `$schema`
+- `default`
+- `definitions`
+- `format`
+- `id`
+
+These keywords are automatically removed during conversion — except when they
+appear as property names within your schema:
 
 ```ts
 const userSchema = z.object({
+  id: z.uuid(),
   name: z.string().default("Anonymous"),
 });
 
@@ -179,11 +190,15 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 {
   "type": "object",
   "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
     "name": {
       "type": "string"
     }
   },
-  "required": ["name"],
+  "required": ["id", "name"],
   "additionalProperties": false
 }
 ```
