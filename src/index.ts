@@ -65,9 +65,19 @@ function _typeForInteger(json: Record<string, any>) {
   return "number";
 }
 
-function _sanitizeSchema(schema: any): any {
+function _isPropertiesMap(object: any): boolean {
+  if (!object || typeof object !== "object") {
+    return false;
+  }
+
+  return Object.values(object).every(
+    (v) => v && typeof v === "object" && ("type" in v || "bsonType" in v),
+  );
+}
+
+function _sanitizeSchema(schema: any, inProperties = false): any {
   if (Array.isArray(schema)) {
-    return schema.map((element) => _sanitizeSchema(element));
+    return schema.map((element) => _sanitizeSchema(element, inProperties));
   }
 
   if (!schema || typeof schema !== "object") {
@@ -77,10 +87,13 @@ function _sanitizeSchema(schema: any): any {
   const sanitized: Record<string, any> = {};
 
   for (const [key, value] of Object.entries(schema)) {
-    // Skip unsupported JSON Schema keywords
-    if (UNSUPPORTED_KEYS.includes(key as any)) continue;
+    // Determine if this key's value is an actual "properties" map
+    const isPropertiesMap = key === "properties" && _isPropertiesMap(value);
 
-    sanitized[key] = _sanitizeSchema(value);
+    // If not inside a properties map, then skip unsupported JSON Schema keywords
+    if (!inProperties && UNSUPPORTED_KEYS.includes(key as any)) continue;
+
+    sanitized[key] = _sanitizeSchema(value, isPropertiesMap);
   }
 
   // Handle numeric type conversion

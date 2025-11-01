@@ -140,6 +140,46 @@ describe("zod-to-mongo-schema", () => {
     expect(r.properties.foo.default).toBeUndefined();
   });
 
+  it("keeps unsupported JSON Schema keys if they are used as property names", () => {
+    const schema = z.object({
+      id: z.number(),
+      format: z.string(),
+      definitions: z.array(z.string()),
+    });
+
+    const r = zodToMongoSchema(schema);
+
+    expect(r.properties).toMatchObject({
+      id: { type: "number" },
+      format: { type: "string" },
+      definitions: { type: "array", items: { type: "string" } },
+    });
+
+    expect(r.required).toEqual(["id", "format", "definitions"]);
+  });
+
+  it("strips unsupported keywords when used inside a `properties` field", () => {
+    const schema = z.object({
+      properties: z.object({
+        field1: z.string().default("foo"),
+        field2: z.number().meta({ $schema: "example" }),
+      }),
+    });
+
+    const r = zodToMongoSchema(schema);
+
+    expect(r.properties.properties).toMatchObject({
+      type: "object",
+      properties: {
+        field1: { type: "string" },
+        field2: { type: "number" },
+      },
+    });
+
+    expect(r.properties.properties.properties.field1.default).toBeUndefined();
+    expect(r.properties.properties.properties.field2.$schema).toBeUndefined();
+  });
+
   it("handles nested objects and arrays", () => {
     const schema = z.object({
       posts: z.array(
