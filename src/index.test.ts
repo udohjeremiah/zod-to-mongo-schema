@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import z from "zod";
 
@@ -54,10 +55,10 @@ describe("zod-to-mongo-schema", () => {
 
     const r = zodToMongoSchema(schema);
 
-    expect(r.properties.smallInt.bsonType).toBe("int");
-    expect(r.properties.smallIntDefaultRange.bsonType).toBe("int");
-    expect(r.properties.largeInt.bsonType).toBe("long");
-    expect(r.properties.largeIntDefaultRange.bsonType).toBe("long");
+    expect(r.properties?.smallInt.bsonType).toBe("int");
+    expect(r.properties?.smallIntDefaultRange.bsonType).toBe("int");
+    expect(r.properties?.largeInt.bsonType).toBe("long");
+    expect(r.properties?.largeIntDefaultRange.bsonType).toBe("long");
   });
 
   it("uses `number` as long as type isn't `integer` even with default range", () => {
@@ -65,7 +66,7 @@ describe("zod-to-mongo-schema", () => {
       val: z.number().min(-2_147_483_648).max(2_147_483_647),
     });
     const r = zodToMongoSchema(schema);
-    expect(r.properties.val.type).toBe("number");
+    expect(r.properties?.val.type).toBe("number");
   });
 
   it("keeps custom min/max for `int`/`long`/`number`", () => {
@@ -79,25 +80,25 @@ describe("zod-to-mongo-schema", () => {
 
     const r = zodToMongoSchema(schema);
 
-    expect(r.properties.smallInt.bsonType).toBe("int");
-    expect(r.properties.smallInt.minimum).toBe(-100);
-    expect(r.properties.smallInt.maximum).toBe(100);
+    expect(r.properties?.smallInt.bsonType).toBe("int");
+    expect(r.properties?.smallInt.minimum).toBe(-100);
+    expect(r.properties?.smallInt.maximum).toBe(100);
 
-    expect(r.properties.minSmallInt.bsonType).toBe("int");
-    expect(r.properties.minSmallInt.minimum).toBe(0);
-    expect(r.properties.minSmallInt.maximum).toBeUndefined();
+    expect(r.properties?.minSmallInt.bsonType).toBe("int");
+    expect(r.properties?.minSmallInt.minimum).toBe(0);
+    expect(r.properties?.minSmallInt.maximum).toBeUndefined();
 
-    expect(r.properties.largeInt.bsonType).toBe("long");
-    expect(r.properties.largeInt.minimum).toBe(-5_000_000_000);
-    expect(r.properties.largeInt.maximum).toBe(5_000_000_000);
+    expect(r.properties?.largeInt.bsonType).toBe("long");
+    expect(r.properties?.largeInt.minimum).toBe(-5_000_000_000);
+    expect(r.properties?.largeInt.maximum).toBe(5_000_000_000);
 
-    expect(r.properties.maxLargeInt.bsonType).toBe("long");
-    expect(r.properties.maxLargeInt.minimum).toBeUndefined();
-    expect(r.properties.maxLargeInt.maximum).toBe(50);
+    expect(r.properties?.maxLargeInt.bsonType).toBe("long");
+    expect(r.properties?.maxLargeInt.minimum).toBeUndefined();
+    expect(r.properties?.maxLargeInt.maximum).toBe(50);
 
-    expect(r.properties.number.type).toBe("number");
-    expect(r.properties.number.minimum).toBe(0.1);
-    expect(r.properties.number.maximum).toBe(99.9);
+    expect(r.properties?.number.type).toBe("number");
+    expect(r.properties?.number.minimum).toBe(0.1);
+    expect(r.properties?.number.maximum).toBe(99.9);
   });
 
   it("preserves `.meta()` fields for title/description", () => {
@@ -106,7 +107,7 @@ describe("zod-to-mongo-schema", () => {
     });
 
     const r = zodToMongoSchema(schema);
-    expect(r.properties.name).toMatchObject({
+    expect(r.properties?.name).toMatchObject({
       title: "Full Name",
       description: "User's name",
       type: "string",
@@ -119,7 +120,7 @@ describe("zod-to-mongo-schema", () => {
     });
 
     const r = zodToMongoSchema(schema);
-    expect(r.properties._id).toMatchObject({ bsonType: "objectId" });
+    expect(r.properties?._id).toMatchObject({ bsonType: "objectId" });
   });
 
   it("removes unsupported JSON Schema keys", () => {
@@ -132,12 +133,12 @@ describe("zod-to-mongo-schema", () => {
     });
 
     const r = zodToMongoSchema(schema);
-    expect(r.properties.foo).toMatchObject({
+    expect(r.properties?.foo).toMatchObject({
       title: "Foo",
       type: "string",
     });
-    expect(r.properties.foo.$schema).toBeUndefined();
-    expect(r.properties.foo.default).toBeUndefined();
+    expect((r.properties?.foo as any).$schema).toBeUndefined();
+    expect((r.properties?.foo as any).default).toBeUndefined();
   });
 
   it("keeps unsupported JSON Schema keys if they are used as property names", () => {
@@ -168,7 +169,7 @@ describe("zod-to-mongo-schema", () => {
 
     const r = zodToMongoSchema(schema);
 
-    expect(r.properties.properties).toMatchObject({
+    expect(r.properties?.properties).toMatchObject({
       type: "object",
       properties: {
         field1: { type: "string" },
@@ -176,8 +177,12 @@ describe("zod-to-mongo-schema", () => {
       },
     });
 
-    expect(r.properties.properties.properties.field1.default).toBeUndefined();
-    expect(r.properties.properties.properties.field2.$schema).toBeUndefined();
+    expect(
+      (r.properties?.properties?.properties?.field1 as any).default,
+    ).toBeUndefined();
+    expect(
+      (r.properties?.properties?.properties?.field2 as any).$schema,
+    ).toBeUndefined();
   });
 
   it("handles nested objects and arrays", () => {
@@ -192,7 +197,7 @@ describe("zod-to-mongo-schema", () => {
     });
 
     const r = zodToMongoSchema(schema);
-    expect(r.properties.posts).toMatchObject({
+    expect(r.properties?.posts).toMatchObject({
       type: "array",
       items: {
         type: "object",
@@ -255,9 +260,9 @@ describe("zod-to-mongo-schema", () => {
 
     const r2 = zodToMongoSchema(schema2);
 
-    expect(r2.properties.foo).not.toMatchObject({ type: "string" });
+    expect(r2.properties?.foo).not.toMatchObject({ type: "string" });
 
-    expect(r2.properties.nested).toMatchObject({
+    expect(r2.properties?.nested).toMatchObject({
       additionalProperties: true,
       properties: {
         baz: { type: "boolean" },
