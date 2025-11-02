@@ -70,7 +70,9 @@ interface MongoSchema {
   uniqueItems?: boolean;
 }
 
-declare module "zod" {
+declare module "zod/v4/core" {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   interface GlobalMeta extends MongoSchema {}
 }
+
+export type { MongoSchema };
