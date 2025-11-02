@@ -2,6 +2,8 @@
 
 import * as z4 from "zod/v4/core";
 
+import type { MongoSchema } from "./zod.js";
+
 /**
  * JSON Schema keys not supported by MongoDB's `$jsonSchema` operator
  * @see https://www.mongodb.com/docs/manual/reference/operator/query/jsonSchema/#omissions
@@ -117,7 +119,7 @@ function _sanitizeSchema(schema: any, inProperties = false): any {
  * @param zodSchema
  * @returns A MongoDB-compatible JSON Schema object ready for use in `$jsonSchema` validation.
  */
-export default function zodToMongoSchema(zodSchema: z4.$ZodType) {
+export default function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
   if (!zodSchema) return {};
 
   // Convert to JSON Schema Draft 4
