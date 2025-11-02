@@ -163,6 +163,20 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
+For these custom fields, you can use Zod's `.refine()` API before `.meta()` to
+apply runtime validation — applying `.refine()` last may strip the metadata:
+
+```ts
+import { ObjectId } from "mongodb";
+
+const userSchema = z.object({
+  _id: z
+    .unknown()
+    .refine((value) => ObjectId.isValid(value as any))
+    .meta({ bsonType: "objectId" }),
+});
+```
+
 MongoDB's `$jsonSchema` validation does not support the following JSON Schema
 keywords:
 
@@ -495,7 +509,7 @@ MongoDB JSON Schema keyword but it isn't here, please open a PR for it.
 | MongoDB                | Zod                                                                                                                                                                                                                                                                                                                                                                                    |
 | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `additionalItems`      | `.rest()`                                                                                                                                                                                                                                                                                                                                                                              |
-| `additionalProperties` | `.catchall()`, `.looseObject()`, `.object()`, `.record()`, `.strictObject`                                                                                                                                                                                                                                                                                                             |
+| `additionalProperties` | `.catchall()`, `.looseObject()`, `.object()`, `.record()`, `.strictObject()`                                                                                                                                                                                                                                                                                                           |
 | `allOf`                | `.and()`, `.intersection()`                                                                                                                                                                                                                                                                                                                                                            |
 | `anyOf`                | `.discriminatedUnion()`, `.nullable()`, `.nullish()`, `.or()`, `.union()`                                                                                                                                                                                                                                                                                                              |
 | `bsonType`             | `.meta({ bsonType: "objectId" })`                                                                                                                                                                                                                                                                                                                                                      |
