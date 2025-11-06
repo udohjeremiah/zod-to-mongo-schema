@@ -14,11 +14,8 @@ type MongoBSONType =
   | "regex"
   | "javascript"
   | "int"
-  | "timestamp"
   | "long"
   | "decimal"
-  | "minKey"
-  | "maxKey"
   | "number";
 
 /**

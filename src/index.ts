@@ -174,8 +174,25 @@ function _sanitizeSchema(schema: any, inProperties = false): any {
 /**
  * Converts a Zod schema to a MongoDB-compatible JSON Schema.
  *
- * @param zodSchema
- * @returns A MongoDB-compatible JSON Schema object ready for use in `$jsonSchema` validation.
+ * The conversion preserves all structural and validation rules
+ * (e.g., `min`, `max`, `enum`), while omitting unsupported
+ * keywords (e.g., `$schema`, `$ref`, `default`).
+ *
+ * @param zodSchema The Zod schema to convert.
+ * @returns A MongoDB-compatible JSON Schema object.
+ *
+ * @example
+ * import z from "zod";
+ * import zodToMongoSchema from "zod-to-mongo-schema";
+ *
+ * const userSchema = z.object({
+ *   _id: z.unknown().meta({ bsonType: "objectId" }),
+ *   name: z.string(),
+ *   age: z.number().min(18),
+ *   isAdmin: z.boolean(),
+ *   createdAt: z.unknown().meta({ bsonType: "date" }),
+ * });
+ * const mongoSchema = zodToMongoSchema(userSchema);
  */
 function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
   if (!zodSchema) return {};
