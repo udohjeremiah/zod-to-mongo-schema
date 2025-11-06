@@ -38,7 +38,7 @@
     "lint": "eslint . --ext .ts,.mts,.js,.mjs",
     "lint:fix": "eslint . --ext .ts,.mts,.js,.mjs --fix",
     "test": "vitest",
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "prepare": "husky"
   },
   "devDependencies": {
