@@ -131,7 +131,7 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-To specify a BSON type if there's no Zod API for it, use `z.unknown().meta()`:
+If there's no direct Zod API for a BSON type, you can use `z.unknown().meta()`:
 
 ```ts
 const userSchema = z.object({
@@ -163,8 +163,8 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-For these custom fields, you can use Zod's `.refine()` API before `.meta()` to
-apply runtime validation — applying `.refine()` last may strip the metadata:
+For these custom fields, you can use Zod's `.refine()` before `.meta()` to apply
+runtime validation — applying `.refine()` last may strip the metadata:
 
 ```ts
 import { ObjectId } from "mongodb";
@@ -175,6 +175,178 @@ const userSchema = z.object({
     .refine((value) => ObjectId.isValid(value as any))
     .meta({ bsonType: "objectId" }),
 });
+```
+
+For numbers, `z.number()` is sufficient. It produces `type: "number"`, which can
+represent integer, decimal, double, or long BSON types.
+
+However, if you want to be specific, use:
+
+- `z.int32()` for BSON `int`
+- `z.int()` and `z.uint32()` for BSON `long`
+- `z.float32()` and `z.float64()` for BSON `double`
+- `.meta` to specify custom BSON numeric types like `decimal`
+
+```ts
+const userSchema = z.object({
+  height: z.number(),
+  age: z.int32(),
+  totalPoints: z.int(),
+  precision32: z.float32(),
+  precision64: z.float64(),
+  balance: z.unknown().meta({ bsonType: "decimal" }),
+});
+
+const mongoSchema = zodToMongoSchema(userSchema);
+console.log(JSON.stringify(mongoSchema, null, 2));
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "height": {
+      "type": "number"
+    },
+    "age": {
+      "bsonType": "int"
+    },
+    "totalPoints": {
+      "bsonType": "long"
+    },
+    "precision32": {
+      "minimum": -3.4028234663852886e38,
+      "maximum": 3.4028234663852886e38,
+      "bsonType": "double"
+    },
+    "precision64": {
+      "bsonType": "double"
+    },
+    "balance": {
+      "bsonType": "decimal"
+    }
+  },
+  "required": [
+    "height",
+    "age",
+    "totalPoints",
+    "precision32",
+    "precision64",
+    "balance"
+  ],
+  "additionalProperties": false
+}
+```
+
+When `.min()` or `.max()` is used with `z.int32()` or `z.int()`, the BSON type
+is inferred based on range:
+
+- Within the 32-bit range is `int`
+- Above 32-bit but within 64-bit range is `long`
+- Beyond the 64-bit range falls back to `number`
+
+```js
+const userSchema = z.object({
+  smallInt: z.int().min(-100).max(100),
+  mediumInt: z.int().min(-2_147_483_648).max(2_147_483_647),
+  largeInt: z.int().min(-9_000_000_000_000_000).max(9_000_000_000_000_000),
+});
+
+const mongoSchema = zodToMongoSchema(userSchema);
+console.log(JSON.stringify(mongoSchema, null, 2));
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "smallInt": {
+      "minimum": -100,
+      "maximum": 100,
+      "bsonType": "int"
+    },
+    "mediumInt": {
+      "bsonType": "int"
+    },
+    "largeInt": {
+      "minimum": -9000000000000000,
+      "maximum": 9000000000000000,
+      "bsonType": "long"
+    }
+  },
+  "required": ["smallInt", "mediumInt", "largeInt"],
+  "additionalProperties": false
+}
+```
+
+Zod's `z.number()`, `z.float32()`, and `z.float64()` all serialize to
+`"type": "number"` in JSON Schema. This means the original intent
+(float32 vs float64 vs generic number) is lost during conversion. To prevent
+incorrect type inference, only _exact_ IEEE-754 float32/float64 ranges are
+treated as `double`. Any custom or partial numeric range simply falls back to
+`"number"`, with its range preserved. This ensures precision is never assumed
+where intent is ambiguous:
+
+```ts
+const FLOAT32_MIN = -3.402_823_466_385_288_6e38;
+const FLOAT32_MAX = 3.402_823_466_385_288_6e38;
+const FLOAT64_MIN = -1.797_693_134_862_315_7e308;
+const FLOAT64_MAX = 1.797_693_134_862_315_7e308;
+
+const schema = z.object({
+  float32: z.float32(),
+  float32DefaultRange: z.number().min(FLOAT32_MIN).max(FLOAT32_MAX),
+  float64: z.float64(),
+  float64DefaultRange: z.number().min(FLOAT64_MIN).max(FLOAT64_MAX),
+  customRange1: z.float32().min(0.1).max(99.9), // Falls back to "number"
+  customRange2: z.float64().min(0.5), // Falls back to "number"
+});
+
+const mongoSchema = zodToMongoSchema(schema);
+console.log(JSON.stringify(mongoSchema, null, 2));
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "float32": {
+      "minimum": -3.4028234663852886e38,
+      "maximum": 3.4028234663852886e38,
+      "bsonType": "double"
+    },
+    "float32DefaultRange": {
+      "minimum": -3.4028234663852886e38,
+      "maximum": 3.4028234663852886e38,
+      "bsonType": "double"
+    },
+    "float64": {
+      "bsonType": "double"
+    },
+    "float64DefaultRange": {
+      "bsonType": "double"
+    },
+    "customRange1": {
+      "minimum": 0.1,
+      "maximum": 99.9,
+      "type": "number"
+    },
+    "customRange2": {
+      "minimum": 0.5,
+      "maximum": 1.7976931348623157e308,
+      "type": "number"
+    }
+  },
+  "required": [
+    "float32",
+    "float32DefaultRange",
+    "float64",
+    "float64DefaultRange",
+    "customRange1",
+    "customRange2"
+  ],
+  "additionalProperties": false
+}
 ```
 
 MongoDB's `$jsonSchema` validation does not support the following JSON Schema
@@ -217,89 +389,11 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-For numbers, `z.number()` is enough. It produces `type: "number"`, and it can
-represent the integer, decimal, double, and long BSON types. However, if you
-want to be specific, use `z.int32()` for the `int` type, `z.int()` for `long`,
-and `.meta` to specify `double` or `decimal` types:
-
-```ts
-const userSchema = z.object({
-  height: z.number(),
-  age: z.int32(),
-  totalPoints: z.int(),
-  balance: z.unknown().meta({ bsonType: "decimal" }),
-});
-
-const mongoSchema = zodToMongoSchema(userSchema);
-console.log(JSON.stringify(mongoSchema, null, 2));
-```
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "height": {
-      "type": "number"
-    },
-    "age": {
-      "bsonType": "int"
-    },
-    "totalPoints": {
-      "bsonType": "long"
-    },
-    "balance": {
-      "bsonType": "decimal"
-    }
-  },
-  "required": ["height", "age", "totalPoints", "balance"],
-  "additionalProperties": false
-}
-```
-
-For convenience, if a `minimum` or `maximum` is specified for `z.int32` or
-`z.int`, the type would be adjusted based on that. `minimum` and `maximum`
-within the 32-bit integer range is represented as `int`, above that and within
-the 64-bit integer range is `long`. Anything above 64-bit integer range is
-represented as `number`:
-
-```js
-const userSchema = z.object({
-  smallInt: z.int().min(-100).max(100),
-  mediumInt: z.int().min(-2_147_483_648).max(2_147_483_647),
-  largeInt: z.int().min(-9_000_000_000_000_000).max(9_000_000_000_000_000),
-});
-
-const mongoSchema = zodToMongoSchema(userSchema);
-console.log(JSON.stringify(mongoSchema, null, 2));
-```
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "smallInt": {
-      "minimum": -100,
-      "maximum": 100,
-      "bsonType": "int"
-    },
-    "mediumInt": {
-      "bsonType": "int"
-    },
-    "largeInt": {
-      "minimum": -9000000000000000,
-      "maximum": 9000000000000000,
-      "bsonType": "long"
-    }
-  },
-  "required": ["smallInt", "mediumInt", "largeInt"],
-  "additionalProperties": false
-}
-```
-
 The following Zod APIs are not representable in JSON Schema and will throw an
 error if encountered:
 
 - `z.bigint()`
+- `z.uint64()`
 - `z.int64()`
 - `z.symbol()`
 - `z.void()`
