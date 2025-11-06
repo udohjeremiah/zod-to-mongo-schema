@@ -10,7 +10,6 @@ Convert Zod schemas to MongoDB-compatible JSON Schemas effortlessly.
 ![lint](https://img.shields.io/badge/lint-eslint-blueviolet.svg)
 ![tests](https://img.shields.io/badge/tests-vitest-yellow.svg)
 [![commitlint](https://img.shields.io/badge/commits-conventional-green.svg)](https://www.conventionalcommits.org)
-[![stars](https://img.shields.io/github/stars/udohjeremiah/zod-to-mongo-schema.svg)](https://github.com/udohjeremiah/zod-to-mongo-schema/stargazers)
 
 ## Overview
 
@@ -20,12 +19,13 @@ MongoDB documents so that _invalid_ values don't sneak in and break your app in
 production.
 
 But writing JSON Schemas by hand isn't fun. As a JavaScript developer, chances
-are you're already using **Zod** to define your schemas.
+are you're already using [Zod](https://github.com/colinhacks/zod) to define your
+schemas.
 
 Wouldn't it be great if you could just take your existing Zod schema and
 instantly turn it into a MongoDB-compatible JSON Schema?
 
-That's exactly what **zod-to-mongo-schema** does. It takes your Zod schema and
+That's exactly what `zod-to-mongo-schema` does. It takes your Zod schema and
 converts it into a ready-to-use JSON Schema that can be applied directly to your
 MongoDB collections for validation.
 
@@ -48,7 +48,7 @@ pnpm add zod-to-mongo-schema
 
 ## Examples
 
-A basic example:
+### A basic example
 
 ```js
 import z from "zod";
@@ -84,7 +84,7 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-A nested Zod schema:
+### A nested Zod schema
 
 ```ts
 const userSchema = z.object({
@@ -131,6 +131,8 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
+### Specifying BSON types with `.meta()`
+
 If there's no direct Zod API for a BSON type, you can use `z.unknown().meta()`:
 
 ```ts
@@ -174,8 +176,14 @@ const userSchema = z.object({
     .unknown()
     .refine((value) => ObjectId.isValid(value as any))
     .meta({ bsonType: "objectId" }),
+  createdAt: z
+    .unknown()
+    .refine((value) => !Number.isNaN(new Date(value as any).getTime()))
+    .meta({ bsonType: "date" }),
 });
 ```
+
+### Number and integer types
 
 For numbers, `z.number()` is sufficient. It produces `type: "number"`, which can
 represent integer, decimal, double, or long BSON types.
@@ -349,7 +357,9 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-MongoDB's `$jsonSchema` validation does not support the following JSON Schema
+## Unsupported JSON Schema keywords
+
+MongoDB's `$jsonSchema` operator does not support the following JSON Schema
 keywords:
 
 - `$ref`
@@ -359,8 +369,8 @@ keywords:
 - `format`
 - `id`
 
-These keywords are automatically removed during conversion — except when they
-appear as property names within your schema:
+These keywords are automatically removed during conversion unless they appear as
+property names:
 
 ```ts
 const userSchema = z.object({
@@ -388,6 +398,8 @@ console.log(JSON.stringify(mongoSchema, null, 2));
   "additionalProperties": false
 }
 ```
+
+## Unsupported Zod APIs
 
 The following Zod APIs are not representable in JSON Schema and will throw an
 error if encountered:
@@ -566,14 +578,14 @@ MongoDB.
 possible, and only step outside them for the two supported `.meta()` uses listed
 above.
 
-Two tables below show how to express common MongoDB JSON Schema patterns using
+The tables below show how to express common MongoDB JSON Schema patterns using
 standard Zod APIs.
 
 ## Type mapping: MongoDB → Zod
 
 | MongoDB      | Zod                                 |
 | :----------- | :---------------------------------- |
-| `double`     | `.meta({ bsonType: "double" })`     |
+| `double`     | `z.float32()`, `z.float64()`        |
 | `string`     | `z.string()`                        |
 | `object`     | `z.object()`                        |
 | `array`      | `z.array()`, `z.tuple()`            |
@@ -585,12 +597,13 @@ standard Zod APIs.
 | `regex`      | `.meta({ bsonType: "regex" })`      |
 | `javascript` | `.meta({ bsonType: "javascript" })` |
 | `int`        | `z.int32()`                         |
-| `timestamp`  | `.meta({ bsonType: "timestamp" })`  |
-| `long`       | `z.int()`                           |
+| `long`       | `z.int()`, `z.uint32()`             |
 | `decimal`    | `.meta({ bsonType: "decimal" })`    |
-| `minKey`     | `.meta({ bsonType: "minKey" })`     |
-| `maxKey`     | `.meta({ bsonType: "maxKey" })`     |
 | `number`     | `z.number()`                        |
+
+> Note: `timestamp`, `minKey` and `maxKey` are BSON types not included in the
+> list above. They were not added as they're MongoDB internal types not intended
+> for outside usage.
 
 To learn more about MongoDB BSON types, check out the
 [MongoDB docs](https://www.mongodb.com/docs/manual/reference/bson-types).
