@@ -97,8 +97,51 @@ describe("zod-to-mongo-schema", () => {
     expect(r.properties?.maxLargeInt.maximum).toBe(50);
 
     expect(r.properties?.number.type).toBe("number");
-    expect(r.properties?.number.minimum).toBe(0.1);
-    expect(r.properties?.number.maximum).toBe(99.9);
+    expect(r.properties?.number.minimum).toBeCloseTo(0.1);
+    expect(r.properties?.number.maximum).toBeCloseTo(99.9);
+  });
+
+  it("converts `float32` and `float64` ranges to `double`, and custom ones to `number`", () => {
+    const FLOAT32_MIN = -3.402_823_466_385_288_6e38;
+    const FLOAT32_MAX = 3.402_823_466_385_288_6e38;
+    const FLOAT64_MIN = -1.797_693_134_862_315_7e308;
+    const FLOAT64_MAX = 1.797_693_134_862_315_7e308;
+
+    const schema = z.object({
+      float32: z.float32(),
+      float32DefaultRange: z.number().min(FLOAT32_MIN).max(FLOAT32_MAX),
+      float64: z.float64(),
+      float64DefaultRange: z.number().min(FLOAT64_MIN).max(FLOAT64_MAX),
+      floatCustomRange: z.float32().min(0.1).max(99.9),
+      floatPartialBound: z.float64().min(-10.5),
+    });
+
+    const r = zodToMongoSchema(schema);
+
+    expect(r.properties?.float32.bsonType).toBe("double");
+    expect(r.properties?.float32DefaultRange.bsonType).toBe("double");
+
+    expect(r.properties?.float64.bsonType).toBe("double");
+    expect(r.properties?.float64DefaultRange.bsonType).toBe("double");
+
+    expect(r.properties?.floatCustomRange.type).toBe("number");
+    expect(r.properties?.floatPartialBound.type).toBe("number");
+
+    expect(r.properties?.float32.minimum).toBeCloseTo(FLOAT32_MIN);
+    expect(r.properties?.float32.maximum).toBeCloseTo(FLOAT32_MAX);
+    expect(r.properties?.float32DefaultRange.minimum).toBeCloseTo(FLOAT32_MIN);
+    expect(r.properties?.float32DefaultRange.maximum).toBeCloseTo(FLOAT32_MAX);
+
+    expect(r.properties?.float64.minimum).toBeUndefined();
+    expect(r.properties?.float64.maximum).toBeUndefined();
+    expect(r.properties?.float64DefaultRange.minimum).toBeUndefined();
+    expect(r.properties?.float64DefaultRange.maximum).toBeUndefined();
+
+    expect(r.properties?.floatCustomRange.minimum).toBeCloseTo(0.1);
+    expect(r.properties?.floatCustomRange.maximum).toBeCloseTo(99.9);
+
+    expect(r.properties?.floatPartialBound.minimum).toBeCloseTo(-10.5);
+    expect(r.properties?.floatPartialBound.maximum).toBeCloseTo(FLOAT64_MAX);
   });
 
   it("preserves `.meta()` fields for title/description", () => {

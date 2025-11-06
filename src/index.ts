@@ -17,56 +17,110 @@ const UNSUPPORTED_KEYS = [
   "id",
 ] as const;
 
-function _typeForInteger(json: Record<string, any>) {
-  // Only process JSON Schemas with type as `"integer"`
-  if (json.type !== "integer" && json.bsonType !== "integer") {
-    return json.bsonType;
+/** @internal */
+function _typeForNumber(json: Record<string, any>) {
+  const type = json.type ?? json.bsonType;
+
+  // Only process number-like schemas
+  if (type !== "integer" && type !== "number") {
+    return type;
   }
 
-  const INT32_MIN = -2_147_483_648; // 2^31 * -1
-  const INT32_MAX = 2_147_483_647; // 2^31 - 1
-  const INT53_MIN = -9_007_199_254_740_991; // -(2^53 - 1)
-  const INT53_MAX = 9_007_199_254_740_991; // 2^53 - 1
-  const INT64_MIN = -9_223_372_036_854_775_808n; // -(2^63)
-  const INT64_MAX = 9_223_372_036_854_775_808n; // 2^63 - 1
+  // Integer ranges
+  const INT32_MIN = -2_147_483_648;
+  const INT32_MAX = 2_147_483_647;
+  const INT53_MIN = -9_007_199_254_740_991;
+  const INT53_MAX = 9_007_199_254_740_991;
+  const INT64_MIN = -9_223_372_036_854_775_808n;
+  const INT64_MAX = 9_223_372_036_854_775_808n;
 
-  const min = json.minimum ?? INT53_MIN;
-  const max = json.maximum ?? INT53_MAX;
+  // Float ranges
+  const FLOAT32_MIN = -3.402_823_466_385_288_6e38;
+  const FLOAT32_MAX = 3.402_823_466_385_288_6e38;
+  const FLOAT64_MIN = -1.797_693_134_862_315_7e308;
+  const FLOAT64_MAX = 1.797_693_134_862_315_7e308;
 
-  // If the range is exactly the standard 32-bit or 53-bit, or no
-  // custom range was specified, then let MongoDB enforce the limits.
-  if (
-    (min === INT32_MIN && max === INT32_MAX) ||
-    (min === INT53_MIN && max === INT53_MAX) ||
-    (json.minimum === undefined && json.maximum === undefined)
-  ) {
-    delete json.minimum;
-    delete json.maximum;
-    return min < INT32_MIN || max > INT32_MAX ? "long" : "int";
+  const min = json.minimum ?? undefined;
+  const max = json.maximum ?? undefined;
+
+  // Handle integers
+  if (type === "integer") {
+    // Match exact `int32` range
+    if (min === INT32_MIN && max === INT32_MAX) {
+      // Range same as MongoDB `int`, so remove redundant bounds
+      delete json.minimum;
+      delete json.maximum;
+      return "int";
+    }
+
+    // Match exact `int` (JS safe integer) range
+    if (min === INT53_MIN && max === INT53_MAX) {
+      // `int` is upgraded to MongoDB `long`, so remove redundant bounds
+      delete json.minimum;
+      delete json.maximum;
+      return "long";
+    }
+
+    // If a custom range is specified, then let the range decide.
+    if (min !== undefined && max !== undefined) {
+      // Zod automatically adds minimum and maximum for `int32` and `int`,
+      // even if the user doesn't specify them. We want to detect those
+      // auto-added bounds and remove them so only user-specified bounds
+      // are present.
+      if (min >= INT32_MIN && max <= INT32_MAX) {
+        if (json.minimum === INT32_MIN) delete json.minimum;
+        if (json.maximum === INT32_MAX) delete json.maximum;
+        return "int";
+      }
+
+      if (BigInt(min) >= INT64_MIN && BigInt(max) <= INT64_MAX) {
+        if (json.minimum === INT53_MIN) delete json.minimum;
+        if (json.maximum === INT53_MAX) delete json.maximum;
+        return "long";
+      }
+    }
+
+    // Beyond 64-bit integers — fallback
+    return "number";
   }
 
-  // If a custom range is specified, then let the range decide.
-  // Zod automatically adds `minimum` and `maximum` for `int32` and `int`,
-  // even if the user only specifies one of them. In such cases, the "other"
-  // boundary is artificially added by Zod. We want to detect those
-  // automatically added fields and remove them so that MongoDB enforces its
-  // default min/max limits for the type.
-  if (min >= INT32_MIN && max <= INT32_MAX) {
-    if (json.minimum === INT32_MIN) delete json.minimum;
-    if (json.maximum === INT32_MAX) delete json.maximum;
-    return "int";
+  // Handle floating numbers
+  if (type === "number") {
+    /**
+     * ⚠️ Why only canonical float ranges are supported:
+     *
+     * Zod's `z.number()`, `z.float32()`, and `z.float64()` all serialize
+     * to plain `"type": "number"` in JSON Schema. This means the original
+     * intent (float32 vs float64 vs generic number) is lost during conversion.
+     *
+     * To prevent incorrect type inference, we only treat *exact* IEEE-754
+     * float32/float64 ranges as `double`. Any custom or partial numeric
+     * range simply falls back to `"number"`, with its range preserved.
+     *
+     * This ensures precision is never assumed where intent is ambiguous.
+     */
+
+    // Match exact `float32` range
+    if (min === FLOAT32_MIN && max === FLOAT32_MAX) {
+      return "double"; // keep range
+    }
+
+    // Match exact `float64` range
+    if (min === FLOAT64_MIN && max === FLOAT64_MAX) {
+      // Range same as MongoDB `double`, so remove redundant bounds
+      delete json.minimum;
+      delete json.maximum;
+      return "double";
+    }
+
+    // Anything else stays as generic number
+    return "number";
   }
 
-  if (BigInt(min) >= INT64_MIN && BigInt(max) <= INT64_MAX) {
-    if (json.minimum === INT53_MIN) delete json.minimum;
-    if (json.maximum === INT53_MAX) delete json.maximum;
-    return "long";
-  }
-
-  // Integers beyond 64-bit integers (rare)
-  return "number";
+  return type;
 }
 
+/** @internal */
 function _isPropertiesMap(object: any): boolean {
   if (!object || typeof object !== "object") {
     return false;
@@ -77,6 +131,7 @@ function _isPropertiesMap(object: any): boolean {
   );
 }
 
+/** @internal */
 function _sanitizeSchema(schema: any, inProperties = false): any {
   if (Array.isArray(schema)) {
     return schema.map((element) => _sanitizeSchema(element, inProperties));
@@ -99,8 +154,11 @@ function _sanitizeSchema(schema: any, inProperties = false): any {
   }
 
   // Handle numeric type conversion
-  if (sanitized.type === "integer" || sanitized.bsonType === "integer") {
-    sanitized.bsonType = _typeForInteger(sanitized);
+  if (
+    ["integer", "number"].includes(sanitized.type) ||
+    ["integer", "number"].includes(sanitized.bsonType)
+  ) {
+    sanitized.bsonType = _typeForNumber(sanitized);
     delete sanitized.type;
   }
 
@@ -119,7 +177,7 @@ function _sanitizeSchema(schema: any, inProperties = false): any {
  * @param zodSchema
  * @returns A MongoDB-compatible JSON Schema object ready for use in `$jsonSchema` validation.
  */
-export default function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
+function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
   if (!zodSchema) return {};
 
   // Convert to JSON Schema Draft 4
@@ -128,3 +186,5 @@ export default function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
   // Sanitize to make it MongoDB-compatible
   return _sanitizeSchema(rawJsonSchema);
 }
+
+export default zodToMongoSchema;
