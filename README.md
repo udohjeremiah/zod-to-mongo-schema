@@ -183,6 +183,20 @@ const userSchema = z.object({
 });
 ```
 
+Note that only `z.unknown()` can be used with `.meta()` to specify BSON types.
+Any other Zod API will throw an error:
+
+```ts
+const userSchema = z.object({
+  _id: z.string().meta({ bsonType: "objectId" }),
+});
+const mongoSchema = zodToMongoSchema(userSchema);
+```
+
+```bash
+Error: `bsonType` can only be used with `z.unknown()`.
+```
+
 ### Number and integer types
 
 For numbers, `z.number()` is sufficient. It produces `type: "number"`, which can
@@ -369,13 +383,14 @@ keywords:
 - `format`
 - `id`
 
-These keywords are automatically removed during conversion unless they appear as
-property names:
+These keywords, along with unknown ones, are automatically removed during
+conversion unless they appear as property names:
 
 ```ts
 const userSchema = z.object({
   id: z.uuid(),
   name: z.string().default("Anonymous"),
+  age: z.string().meta({ whatever: "trash" }),
 });
 
 const mongoSchema = zodToMongoSchema(userSchema);
@@ -392,9 +407,12 @@ console.log(JSON.stringify(mongoSchema, null, 2));
     },
     "name": {
       "type": "string"
+    },
+    "age": {
+      "type": "number"
     }
   },
-  "required": ["id", "name"],
+  "required": ["id", "name", "age"],
   "additionalProperties": false
 }
 ```
@@ -433,12 +451,13 @@ const userSchema = z
   })
   .meta({ additionalProperties: true });
 
-const mongoSchema = zodToMongoSchema(userSchema);
-console.log(JSON.stringify(mongoSchema, null, 2));
+const jsonSchema = z.toJSONSchema(userSchema);
+console.log(JSON.stringify(jsonSchema, null, 2));
 ```
 
 ```json
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
   "type": "object",
   "properties": {
@@ -489,7 +508,7 @@ However, `zod-to-mongo-schema` expects you to use it **only for two purposes**:
    }
    ```
 
-2. **To specify a custom bson type with `z.unknown` if the Zod API doesn't have
+2. **To specify a custom BSON type with `z.unknown` if the Zod API doesn't have
    it:**
 
    ```js
@@ -519,7 +538,7 @@ However, `zod-to-mongo-schema` expects you to use it **only for two purposes**:
    ```
 
 Of course, you can choose to _break the rule_ and still extend it beyond those
-two cases. In some uses, it won't hurt:
+two cases:
 
 ```js
 const userSchema = z.object({
@@ -544,30 +563,18 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-But in most cases — especially when used with something other than `z.unknown` —
-it will:
+However, you cannot specify `type` and `bsonType` simultaneously for a schema,
+since that would be invalid for MongoDB. If you do, an error will be thrown:
 
-```js
+```ts
 const userSchema = z.object({
-  name: z.string().meta({ bsonType: "objectId" }),
+  _id: z.unknown().meta({ type: "boolean", bsonType: "objectId" }),
 });
-
 const mongoSchema = zodToMongoSchema(userSchema);
-console.log(JSON.stringify(mongoSchema, null, 2));
 ```
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "name": {
-      "bsonType": "objectId",
-      "type": "string"
-    }
-  },
-  "required": ["name"],
-  "additionalProperties": false
-}
+```bash
+Error: Cannot specify both `type` and `bsonType` simultaneously.
 ```
 
 Outside those two cases, the library assumes you know better than it — so

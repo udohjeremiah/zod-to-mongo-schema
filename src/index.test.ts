@@ -157,21 +157,49 @@ describe("zod-to-mongo-schema", () => {
     });
   });
 
-  it("allows `.meta({ bsonType })` with `z.unknown()`", () => {
+  it("only allows `.meta({ bsonType })` with `z.unknown()`", () => {
     const schema = z.object({
       _id: z.unknown().meta({ bsonType: "objectId" }),
     });
 
     const r = zodToMongoSchema(schema);
     expect(r.properties?._id).toMatchObject({ bsonType: "objectId" });
+
+    const badSchemas = [
+      z.object({ age: z.number().meta({ bsonType: "int" }) }),
+      z.object({ name: z.string().meta({ bsonType: "string" }) }),
+      z.object({ isActive: z.boolean().meta({ bsonType: "bool" }) }),
+      z.object({ tags: z.array(z.string()).meta({ bsonType: "array" }) }),
+      z.object({ data: z.object({}).meta({ bsonType: "object" }) }),
+    ];
+
+    for (const badSchema of badSchemas) {
+      expect(() => zodToMongoSchema(badSchema)).toThrowError(
+        /`bsonType` can only be used with `z\.unknown\(\)`./,
+      );
+    }
   });
 
-  it("removes unsupported JSON Schema keys", () => {
+  it("doesn't allow both `type` and `bsonType` simultaneously", () => {
+    const badSchemas = [
+      z.object({ field: z.unknown().meta({ type: "null", bsonType: "bool" }) }),
+      z.object({ field: z.unknown().meta({ type: "null", bsonType: "date" }) }),
+    ];
+
+    for (const badSchema of badSchemas) {
+      expect(() => zodToMongoSchema(badSchema)).toThrowError(
+        /Cannot specify both `type` and `bsonType` simultaneously./,
+      );
+    }
+  });
+
+  it("removes unknown/unsupported JSON Schema keys", () => {
     const schema = z.object({
       foo: z.string().meta({
         $schema: "http://json-schema.org/draft-04/schema#",
         default: "bar",
         title: "Foo",
+        whatever: "trash",
       }),
     });
 
@@ -182,6 +210,7 @@ describe("zod-to-mongo-schema", () => {
     });
     expect((r.properties?.foo as any).$schema).toBeUndefined();
     expect((r.properties?.foo as any).default).toBeUndefined();
+    expect((r.properties?.foo as any).whatever).toBeUndefined();
   });
 
   it("keeps unsupported JSON Schema keys if they are used as property names", () => {
@@ -202,11 +231,11 @@ describe("zod-to-mongo-schema", () => {
     expect(r.required).toEqual(["id", "format", "definitions"]);
   });
 
-  it("strips unsupported keywords when used inside a `properties` field", () => {
+  it("strips unknown/unsupported keywords when used inside a `properties` field", () => {
     const schema = z.object({
       properties: z.object({
         field1: z.string().default("foo"),
-        field2: z.number().meta({ $schema: "example" }),
+        field2: z.number().meta({ $schema: "example", whatever: 123 }),
       }),
     });
 
@@ -225,6 +254,9 @@ describe("zod-to-mongo-schema", () => {
     ).toBeUndefined();
     expect(
       (r.properties?.properties?.properties?.field2 as any).$schema,
+    ).toBeUndefined();
+    expect(
+      (r.properties?.properties?.properties?.field2 as any).whatever,
     ).toBeUndefined();
   });
 

@@ -5,20 +5,43 @@ import * as z4 from "zod/v4/core";
 import type { MongoSchema } from "./zod.js";
 
 /**
- * JSON Schema keys not supported by MongoDB's `$jsonSchema` operator
- * @see https://www.mongodb.com/docs/manual/reference/operator/query/jsonSchema/#omissions
+ * MongoDB available JSON Schema keywords
+ * @see https://www.mongodb.com/docs/manual/reference/operator/query/jsonSchema/#available-keywords
  */
-const UNSUPPORTED_KEYS = [
-  "$ref",
-  "$schema",
-  "default",
-  "definitions",
-  "format",
-  "id",
-] as const;
+const AVAILABLE_KEYWORDS = new Set([
+  "additionalItems",
+  "additionalProperties",
+  "allOf",
+  "anyOf",
+  "bsonType",
+  "dependencies",
+  "description",
+  "enum",
+  "exclusiveMaximum",
+  "exclusiveMinimum",
+  "items",
+  "maximum",
+  "maxItems",
+  "maxLength",
+  "maxProperties",
+  "minimum",
+  "minItems",
+  "minLength",
+  "minProperties",
+  "multipleOf",
+  "not",
+  "oneOf",
+  "pattern",
+  "patternProperties",
+  "properties",
+  "required",
+  "title",
+  "type",
+  "uniqueItems",
+] as const);
 
 /** @internal */
-function _typeForNumber(json: Record<string, any>) {
+function _inferMongoNumericType(json: Record<string, any>) {
   const type = json.type ?? json.bsonType;
 
   // Only process number-like schemas
@@ -121,20 +144,40 @@ function _typeForNumber(json: Record<string, any>) {
 }
 
 /** @internal */
-function _isPropertiesMap(object: any): boolean {
-  if (!object || typeof object !== "object") {
+function _isKeywordMap(key: string, value: any) {
+  if (!value || typeof value !== "object") {
     return false;
   }
 
-  return Object.values(object).every(
-    (v) => v && typeof v === "object" && ("type" in v || "bsonType" in v),
-  );
+  switch (key) {
+    case "dependencies": {
+      return Object.values(value).every(
+        (v) =>
+          (Array.isArray(v) && v.every((s) => typeof s === "string")) ||
+          (v && typeof v === "object"),
+      );
+    }
+
+    case "patternProperties": {
+      return Object.values(value).every((v) => v && typeof v === "object");
+    }
+
+    case "properties": {
+      return Object.values(value).every(
+        (v) => v && typeof v === "object" && ("type" in v || "bsonType" in v),
+      );
+    }
+
+    default: {
+      return false;
+    }
+  }
 }
 
 /** @internal */
-function _sanitizeSchema(schema: any, inProperties = false): any {
+function _sanitizeSchema(schema: any, inKeywordMap = false): any {
   if (Array.isArray(schema)) {
-    return schema.map((element) => _sanitizeSchema(element, inProperties));
+    return schema.map((element) => _sanitizeSchema(element, inKeywordMap));
   }
 
   if (!schema || typeof schema !== "object") {
@@ -144,13 +187,13 @@ function _sanitizeSchema(schema: any, inProperties = false): any {
   const sanitized: Record<string, any> = {};
 
   for (const [key, value] of Object.entries(schema)) {
-    // Determine if this key's value is an actual "properties" map
-    const isPropertiesMap = key === "properties" && _isPropertiesMap(value);
+    // If not inside a keywords map, then skip unknown/unsupported keywords
+    if (!inKeywordMap && !AVAILABLE_KEYWORDS.has(key as any)) continue;
 
-    // If not inside a properties map, then skip unsupported JSON Schema keywords
-    if (!inProperties && UNSUPPORTED_KEYS.includes(key as any)) continue;
+    // Determine if this key's value is an actual keyword's map
+    const isKeywordMap = _isKeywordMap(key, value);
 
-    sanitized[key] = _sanitizeSchema(value, isPropertiesMap);
+    sanitized[key] = _sanitizeSchema(value, isKeywordMap);
   }
 
   // Handle numeric type conversion
@@ -158,7 +201,7 @@ function _sanitizeSchema(schema: any, inProperties = false): any {
     ["integer", "number"].includes(sanitized.type) ||
     ["integer", "number"].includes(sanitized.bsonType)
   ) {
-    sanitized.bsonType = _typeForNumber(sanitized);
+    sanitized.bsonType = _inferMongoNumericType(sanitized);
     delete sanitized.type;
   }
 
@@ -175,11 +218,13 @@ function _sanitizeSchema(schema: any, inProperties = false): any {
  * Converts a Zod schema to a MongoDB-compatible JSON Schema.
  *
  * The conversion preserves all structural and validation rules
- * (e.g., `min`, `max`, `enum`), while omitting unsupported
- * keywords (e.g., `$schema`, `$ref`, `default`).
+ * (e.g., `min`, `max`, `enum`), while omitting unknown or
+ * unsupported keywords (e.g., `$schema`, `$ref`, `default`).
  *
  * @param zodSchema The Zod schema to convert.
  * @returns A MongoDB-compatible JSON Schema object.
+ * @throws {Error} If `bsonType` is used on non-`unknown` Zod types.
+ * @throws {Error} If both `type` and `bsonType` are present simultaneously.
  *
  * @example
  * import z from "zod";
@@ -198,7 +243,23 @@ function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
   if (!zodSchema) return {};
 
   // Convert to JSON Schema Draft 4
-  const rawJsonSchema = z4.toJSONSchema(zodSchema, { target: "draft-4" });
+  const rawJsonSchema = z4.toJSONSchema(zodSchema, {
+    target: "draft-4",
+    override: (context) => {
+      if (
+        context.zodSchema._zod.def.type !== "unknown" &&
+        context.jsonSchema.bsonType
+      ) {
+        throw new Error("`bsonType` can only be used with `z.unknown()`.");
+      }
+
+      if (context.jsonSchema.type && context.jsonSchema.bsonType) {
+        throw new Error(
+          "Cannot specify both `type` and `bsonType` simultaneously.",
+        );
+      }
+    },
+  });
 
   // Sanitize to make it MongoDB-compatible
   return _sanitizeSchema(rawJsonSchema);
