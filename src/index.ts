@@ -45,9 +45,7 @@ function _inferMongoNumericType(json: Record<string, any>) {
   const type = json.type ?? json.bsonType;
 
   // Only process number-like schemas
-  if (type !== "integer" && type !== "number") {
-    return type;
-  }
+  if (type !== "integer" && type !== "number") return type;
 
   // Integer ranges
   const INT32_MIN = -2_147_483_648;
@@ -144,28 +142,61 @@ function _inferMongoNumericType(json: Record<string, any>) {
 }
 
 /** @internal */
-function _isKeywordMap(key: string, value: any) {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
+function _isKeywordMap(key: string, value: any): boolean {
+  if (!value || typeof value !== "object") return false;
+
+  // Keywords that can contain nested schemas
+  const nestedKeywords: Record<string, boolean> = {
+    additionalItems: true,
+    additionalProperties: true,
+    allOf: true,
+    anyOf: true,
+    dependencies: true,
+    items: true,
+    not: true,
+    oneOf: true,
+    patternProperties: true,
+    properties: true,
+  };
+
+  if (!nestedKeywords[key]) return false;
+
+  // Helper to check if an object looks like a `MongoSchema`
+  const isMongoSchema = (object: any) =>
+    object &&
+    typeof object === "object" &&
+    (object.type ||
+      object.bsonType ||
+      Object.keys(object).some((k) => nestedKeywords[k]));
 
   switch (key) {
+    case "allOf":
+    case "anyOf":
+    case "oneOf": {
+      return (
+        Array.isArray(value) && value.every((element) => isMongoSchema(element))
+      );
+    }
+
     case "dependencies": {
       return Object.values(value).every(
-        (v) =>
-          (Array.isArray(v) && v.every((s) => typeof s === "string")) ||
-          (v && typeof v === "object"),
+        (v) => Array.isArray(v) || isMongoSchema(v),
       );
     }
 
-    case "patternProperties": {
-      return Object.values(value).every((v) => v && typeof v === "object");
+    case "items": {
+      return Array.isArray(value)
+        ? value.every((element) => isMongoSchema(element))
+        : isMongoSchema(value);
     }
 
+    case "not": {
+      return isMongoSchema(value);
+    }
+
+    case "patternProperties":
     case "properties": {
-      return Object.values(value).every(
-        (v) => v && typeof v === "object" && ("type" in v || "bsonType" in v),
-      );
+      return Object.values(value).every((element) => isMongoSchema(element));
     }
 
     default: {
@@ -175,25 +206,50 @@ function _isKeywordMap(key: string, value: any) {
 }
 
 /** @internal */
-function _sanitizeSchema(schema: any, inKeywordMap = false): any {
+function _sanitizeSchema(
+  schema: any,
+  inKeywordMap = false,
+  inPropertiesMap = false,
+): any {
   if (Array.isArray(schema)) {
-    return schema.map((element) => _sanitizeSchema(element, inKeywordMap));
+    // If we're inside a keyword map, each element is assumed
+    // to be a schema (e.g., `allOf`, `anyOf`, `items`, etc).
+    return schema.map((element) =>
+      _sanitizeSchema(element, inKeywordMap, false),
+    );
   }
 
-  if (!schema || typeof schema !== "object") {
-    return schema;
-  }
+  // Primitive values stay as-is
+  if (schema === null || typeof schema !== "object") return schema;
 
   const sanitized: Record<string, any> = {};
 
+  // When inside `"properties"`, keys are user-defined field names, not
+  // JSON Schema keywords. So, we preserve all keys and recurse normally.
+  if (inPropertiesMap) {
+    for (const [propertyKey, propertyValue] of Object.entries(schema)) {
+      sanitized[propertyKey] = _sanitizeSchema(propertyValue, false, false);
+    }
+
+    return sanitized;
+  }
+
+  // In normal objects, iterate through all keys
   for (const [key, value] of Object.entries(schema)) {
-    // If not inside a keywords map, then skip unknown/unsupported keywords
-    if (!inKeywordMap && !AVAILABLE_KEYWORDS.has(key as any)) continue;
+    // If this key starts a `"properties"` map, enter properties mode
+    if (key === "properties") {
+      sanitized.properties = _sanitizeSchema(value, false, true);
+      continue;
+    }
 
-    // Determine if this key's value is an actual keyword's map
-    const isKeywordMap = _isKeywordMap(key, value);
+    // Skip unknown/unsupported keywords
+    if (!AVAILABLE_KEYWORDS.has(key as any)) continue;
 
-    sanitized[key] = _sanitizeSchema(value, isKeywordMap);
+    // Detect if this key contains nested schemas (maps or arrays)
+    const nextInKeywordMap = _isKeywordMap(key, value);
+
+    // Recursively sanitize the value
+    sanitized[key] = _sanitizeSchema(value, nextInKeywordMap, false);
   }
 
   // Handle numeric type conversion
