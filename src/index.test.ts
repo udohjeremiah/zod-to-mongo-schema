@@ -180,6 +180,21 @@ describe("zod-to-mongo-schema", () => {
     }
   });
 
+  it("throws if `.meta({ bsonType })` is used after chained methods on `z.unknown()`", () => {
+    const badSchemas = [
+      z.object({ a: z.unknown().nullable().meta({ bsonType: "objectId" }) }),
+      z.object({ b: z.unknown().optional().meta({ bsonType: "date" }) }),
+      z.object({ c: z.unknown().array().meta({ bsonType: "number" }) }),
+      z.object({ d: z.unknown().or(z.null()).meta({ bsonType: "string" }) }),
+    ];
+
+    for (const badSchema of badSchemas) {
+      expect(() => zodToMongoSchema(badSchema)).toThrowError(
+        /`bsonType` can only be used with `z\.unknown\(\)`./,
+      );
+    }
+  });
+
   it("doesn't allow both `type` and `bsonType` simultaneously", () => {
     const badSchemas = [
       z.object({ field: z.unknown().meta({ type: "null", bsonType: "bool" }) }),
@@ -343,5 +358,37 @@ describe("zod-to-mongo-schema", () => {
         baz: { type: "boolean" },
       },
     });
+  });
+
+  it("handles nested schema arrays (`allOf`/`anyOf`/`items`) and strips unknown keys", () => {
+    const schema = z.object({
+      exactly: z.intersection(z.string(), z.number()),
+      either: z.union([z.string().meta({ foo: "bar" }), z.null()]),
+      array: z.array(z.object({ a: z.number().meta({ trash: 123 }) })),
+    });
+
+    const r = zodToMongoSchema(schema);
+
+    expect(r.properties?.exactly.allOf).toHaveLength(2);
+    expect(r.properties?.exactly?.allOf?.[0]).toMatchObject({ type: "string" });
+    expect(r.properties?.exactly?.allOf?.[1]).toMatchObject({ type: "number" });
+
+    expect(r.properties?.either.anyOf).toHaveLength(2);
+    expect(r.properties?.either?.anyOf?.[0]).toMatchObject({ type: "string" });
+    expect(r.properties?.either?.anyOf?.[1]).toMatchObject({ type: "null" });
+    expect((r.properties?.either.anyOf?.[0] as any).foo).toBeUndefined();
+
+    expect(r.properties?.array).toMatchObject({
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          a: { type: "number" },
+        },
+      },
+    });
+    expect(
+      (r.properties?.array?.items as any).properties.a.trash,
+    ).toBeUndefined();
   });
 });

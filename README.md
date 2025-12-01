@@ -33,8 +33,6 @@ MongoDB collections for validation.
 
 > **Note:** This library expects Zod `^3.25.0` or `4.x.x` as a peer dependency.
 
-Install using your preferred package manager:
-
 ```bash
 # npm
 npm install zod-to-mongo-schema
@@ -46,7 +44,7 @@ yarn add zod-to-mongo-schema
 pnpm add zod-to-mongo-schema
 ```
 
-## Examples
+## Usage
 
 ### A basic example
 
@@ -139,7 +137,6 @@ If there's no direct Zod API for a BSON type, you can use `z.unknown().meta()`:
 const userSchema = z.object({
   _id: z.unknown().meta({ bsonType: "objectId" }),
   createdAt: z.unknown().meta({ bsonType: "date" }),
-  name: z.string(),
 });
 
 const mongoSchema = zodToMongoSchema(userSchema);
@@ -155,18 +152,69 @@ console.log(JSON.stringify(mongoSchema, null, 2));
     },
     "createdAt": {
       "bsonType": "date"
-    },
-    "name": {
-      "type": "string"
     }
   },
-  "required": ["_id", "createdAt", "name"],
+  "required": ["_id", "createdAt"],
   "additionalProperties": false
 }
 ```
 
-For these custom fields, you can use Zod's `.refine()` before `.meta()` to apply
-runtime validation — applying `.refine()` last may strip the metadata:
+Only `z.unknown()` can be used with `.meta()` to specify BSON types. Using
+`.meta()` on other Zod types will throw:
+
+```ts
+const userSchema = z.object({
+  _id: z.string().meta({ bsonType: "objectId" }),
+});
+const mongoSchema = zodToMongoSchema(userSchema);
+```
+
+```bash
+Error: `bsonType` can only be used with `z.unknown()`.
+```
+
+### Order of `.meta()` with chained methods
+
+When chaining methods like `.and()`, `.or()`, or `.nullable()` on these custom
+fields, `.meta({ bsonType })` must come first. Otherwise, the metadata will be
+applied to the wrapper instead of the actual field, resulting in an error or
+incorrect Mongo schema.
+
+```ts
+import { ObjectId } from "mongodb";
+
+const userSchema = z.object({
+  _id: z.unknown().meta({ bsonType: "objectId" }).nullable(), // correct
+  // _id: z.unknown().nullable().meta({ bsonType: "objectId" }), // incorrect
+});
+const mongoSchema = zodToMongoSchema(userSchema);
+console.log(JSON.stringify(mongoSchema, null, 2));
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "_id": {
+      "anyOf": [
+        {
+          "bsonType": "objectId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": ["_id"],
+  "additionalProperties": false
+}
+```
+
+### Runtime validation for `.meta` custom fields
+
+For runtime validation, `.refine()` can be applied before `.meta()`. This
+ensures the validation logic is preserved while still including the metadata:
 
 ```ts
 import { ObjectId } from "mongodb";
@@ -183,21 +231,7 @@ const userSchema = z.object({
 });
 ```
 
-Note that only `z.unknown()` can be used with `.meta()` to specify BSON types.
-Any other Zod API will throw an error:
-
-```ts
-const userSchema = z.object({
-  _id: z.string().meta({ bsonType: "objectId" }),
-});
-const mongoSchema = zodToMongoSchema(userSchema);
-```
-
-```bash
-Error: `bsonType` can only be used with `z.unknown()`.
-```
-
-### Number and integer types
+### Number types
 
 For numbers, `z.number()` is sufficient. It produces `type: "number"`, which can
 represent integer, decimal, double, or long BSON types.
