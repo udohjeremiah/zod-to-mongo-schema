@@ -301,6 +301,7 @@ function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
   // Convert to JSON Schema Draft 4
   const rawJsonSchema = z4.toJSONSchema(zodSchema, {
     target: "draft-4",
+    unrepresentable: "any",
     override: (context) => {
       if (
         context.zodSchema._zod.def.type !== "unknown" &&
@@ -313,6 +314,26 @@ function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
         throw new Error(
           "Cannot specify both `type` and `bsonType` simultaneously.",
         );
+      }
+
+      const anyJsonSchema = Object.keys(context.jsonSchema).length === 0;
+      if (anyJsonSchema) {
+        switch (context.zodSchema._zod.def.type) {
+          case "date": {
+            context.jsonSchema.bsonType = "date";
+            break;
+          }
+          case "any":
+          case "unknown": {
+            // These should actually be "any" schemas
+            break;
+          }
+          default: {
+            throw new Error(
+              `Cannot represent Zod type "${context.zodSchema._zod.def.type}" as "any" JSON Schema.`,
+            );
+          }
+        }
       }
     },
   });

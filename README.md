@@ -461,12 +461,14 @@ error if encountered:
 - `z.int64()`
 - `z.symbol()`
 - `z.void()`
-- `z.date()`
 - `z.map()`
 - `z.set()`
 - `z.transform()`
 - `z.nan()`
 - `z.custom()`
+
+(Zod does not natively support representing `z.date()` in JSON Schema. However,
+because dates are a valid BSON type, it is supported within `zodToMongoSchema`.)
 
 ## Use `.meta()` judiciously
 

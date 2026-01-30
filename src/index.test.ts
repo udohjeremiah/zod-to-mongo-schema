@@ -144,6 +144,15 @@ describe("zod-to-mongo-schema", () => {
     expect(r.properties?.floatPartialBound.maximum).toBeCloseTo(FLOAT64_MAX);
   });
 
+  it("handles dates", () => {
+    const schema = z.object({
+      createdAt: z.date(),
+    });
+
+    const r = zodToMongoSchema(schema);
+    expect(r.properties?.createdAt.bsonType).toBe("date");
+  });
+
   it("preserves `.meta()` fields for title/description", () => {
     const schema = z.object({
       name: z.string().meta({ title: "Full Name", description: "User's name" }),
