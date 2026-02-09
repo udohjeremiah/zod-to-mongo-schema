@@ -5,6 +5,24 @@ import * as z4 from "zod/v4/core";
 import type { MongoSchema } from "./zod.js";
 
 /**
+ * Options for converting a Zod schema to a MongoDB-compatible JSON Schema.
+ */
+export interface ZodToMongoSchemaOptions {
+  /**
+   * When `true` (default), only allows `bsonType` on `z.unknown()` schemas
+   * and throws on unrepresentable types (like `z.symbol()`).
+   * `z.date()` is always auto-mapped to `{ bsonType: "date" }`.
+   *
+   * When `false`, allows `bsonType` on any schema, enabling types like
+   * `z.instanceof(Uint8Array)` to be converted (they produce empty schemas
+   * without a `bsonType` override).
+   *
+   * @default true
+   */
+  strict?: boolean;
+}
+
+/**
  * MongoDB available JSON Schema keywords
  * @see https://www.mongodb.com/docs/manual/reference/operator/query/jsonSchema/#available-keywords
  */
@@ -270,6 +288,16 @@ function _sanitizeSchema(
   return sanitized;
 }
 
+/** Wrapper/transparent Zod types that just propagate their inner schema. */
+const WRAPPER_TYPES = new Set([
+  "optional",
+  "nullable",
+  "default",
+  "readonly",
+  "branded",
+  "lazy",
+]);
+
 /**
  * Converts a Zod schema to a MongoDB-compatible JSON Schema.
  *
@@ -277,10 +305,16 @@ function _sanitizeSchema(
  * (e.g., `min`, `max`, `enum`), while omitting unknown or
  * unsupported keywords (e.g., `$schema`, `$ref`, `default`).
  *
+ * ⚠️ Unlike `z.toJSONSchema`, this function supports `z.date()` — it is
+ * automatically mapped to `{ bsonType: "date" }` since `date` is a native
+ * BSON type. This is the one case where `zodToMongoSchema` intentionally
+ * diverges from Zod's built-in JSON Schema conversion.
+ *
  * @param zodSchema The Zod schema to convert.
+ * @param options Optional configuration for the conversion.
  * @returns A MongoDB-compatible JSON Schema object.
- * @throws {Error} If `bsonType` is used on non-`unknown` Zod types.
- * @throws {Error} If both `type` and `bsonType` are present simultaneously.
+ * @throws {Error} If `bsonType` is used on non-`unknown` Zod types (when `strict: true`).
+ * @throws {Error} If both `type` and `bsonType` are present simultaneously (when `strict: true`).
  *
  * @example
  * import z from "zod";
@@ -291,28 +325,81 @@ function _sanitizeSchema(
  *   name: z.string(),
  *   age: z.number().min(18),
  *   isAdmin: z.boolean(),
- *   createdAt: z.unknown().meta({ bsonType: "date" }),
+ *   createdAt: z.date(), // auto-mapped to { bsonType: "date" }
  * });
  * const mongoSchema = zodToMongoSchema(userSchema);
+ *
+ * @example
+ * // With strict: false, you can use bsonType on any schema
+ * const schema = z.object({
+ *   createdAt: z.date(), // auto-mapped to { bsonType: "date" }
+ *   data: z.instanceof(Uint8Array).meta({ bsonType: "binData" }),
+ * });
+ * const mongoSchema = zodToMongoSchema(schema, { strict: false });
  */
-function zodToMongoSchema(zodSchema: z4.$ZodType): MongoSchema {
+function zodToMongoSchema(
+  zodSchema: z4.$ZodType,
+  options: ZodToMongoSchemaOptions = {},
+): MongoSchema {
   if (!zodSchema) return {};
+
+  const { strict = true } = options;
 
   // Convert to JSON Schema Draft 4
   const rawJsonSchema = z4.toJSONSchema(zodSchema, {
     target: "draft-4",
+    unrepresentable: "any",
     override: (context) => {
+      const definitionType = context.zodSchema._zod.def.type;
+      const { jsonSchema } = context;
+      const meta = z4.globalRegistry.get(context.zodSchema) as
+        | Record<string, any>
+        | undefined;
+
+      // Auto-map z.date() → { bsonType: "date" }
+      if (definitionType === "date") {
+        if (!meta?.bsonType) {
+          jsonSchema.bsonType = "date";
+        } else if (strict) {
+          throw new Error("`bsonType` can only be used with `z.unknown()`.");
+        }
+        return;
+      }
+
+      // Detect unrepresentable types (no structural JSON Schema content).
+      // Skip wrapper types (optional, nullable, etc.) that just propagate
+      // their inner schema — they never add structural content themselves.
       if (
-        context.zodSchema._zod.def.type !== "unknown" &&
-        context.jsonSchema.bsonType
+        strict &&
+        definitionType !== "unknown" &&
+        definitionType !== "any" &&
+        !WRAPPER_TYPES.has(definitionType) &&
+        !meta?.bsonType &&
+        !jsonSchema.type &&
+        !jsonSchema.bsonType &&
+        !jsonSchema.allOf &&
+        !jsonSchema.anyOf &&
+        !jsonSchema.oneOf &&
+        !jsonSchema.properties &&
+        !jsonSchema.items
       ) {
+        throw new Error(
+          `Unrepresentable type "${definitionType}" cannot be converted to MongoDB JSON Schema.`,
+        );
+      }
+
+      if (strict && definitionType !== "unknown" && meta?.bsonType) {
         throw new Error("`bsonType` can only be used with `z.unknown()`.");
       }
 
-      if (context.jsonSchema.type && context.jsonSchema.bsonType) {
-        throw new Error(
-          "Cannot specify both `type` and `bsonType` simultaneously.",
-        );
+      if (jsonSchema.type && jsonSchema.bsonType) {
+        if (strict) {
+          throw new Error(
+            "Cannot specify both `type` and `bsonType` simultaneously.",
+          );
+        }
+        // In non-strict mode, bsonType takes precedence over type
+        delete jsonSchema.type;
       }
     },
   });
