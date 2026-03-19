@@ -136,7 +136,7 @@ If there's no direct Zod API for a BSON type, you can use `z.unknown().meta()`:
 ```ts
 const userSchema = z.object({
   _id: z.unknown().meta({ bsonType: "objectId" }),
-  createdAt: z.unknown().meta({ bsonType: "date" }),
+  createdAt: z.date(), // auto-mapped to { bsonType: "date" }
 });
 
 const mongoSchema = zodToMongoSchema(userSchema);
@@ -159,8 +159,12 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 }
 ```
 
-Only `z.unknown()` can be used with `.meta()` to specify BSON types. Using
-`.meta()` on other Zod types will throw:
+`z.date()` is automatically mapped to `{ bsonType: "date" }` in both strict and
+non-strict modes, since the mapping is unambiguous.
+
+For other BSON types without a direct Zod equivalent, in strict mode (the
+default) only `z.unknown()` can be used with `.meta()` to specify BSON types.
+Using `.meta({ bsonType })` on other Zod types will throw:
 
 ```ts
 const userSchema = z.object({
@@ -172,6 +176,8 @@ const mongoSchema = zodToMongoSchema(userSchema);
 ```bash
 Error: `bsonType` can only be used with `z.unknown()`.
 ```
+
+In [non-strict mode](#non-strict-mode), `bsonType` can be used on any Zod type.
 
 ### Order of `.meta()` with chained methods
 
@@ -224,12 +230,54 @@ const userSchema = z.object({
     .unknown()
     .refine((value) => ObjectId.isValid(value as any))
     .meta({ bsonType: "objectId" }),
-  createdAt: z
-    .unknown()
-    .refine((value) => !Number.isNaN(new Date(value as any).getTime()))
-    .meta({ bsonType: "date" }),
+  createdAt: z.date().refine((value) => !Number.isNaN(value.getTime())),
 });
 ```
+
+### Non-strict mode
+
+By default, `zodToMongoSchema` operates in strict mode, which:
+
+- Only allows `bsonType` on `z.unknown()` schemas (except `z.date()`, which is
+  auto-mapped)
+- Throws on Zod types that can't be represented in JSON Schema (like
+  `z.symbol()`)
+
+If you're working with types like `z.instanceof(Uint8Array)` and want to map
+them to BSON types, you can use non-strict mode by passing `{ strict: false }`:
+
+```ts
+const userSchema = z.object({
+  data: z.instanceof(Uint8Array).meta({ bsonType: "binData" }),
+});
+
+const mongoSchema = zodToMongoSchema(userSchema, { strict: false });
+console.log(JSON.stringify(mongoSchema, null, 2));
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "data": {
+      "bsonType": "binData"
+    }
+  },
+  "required": ["data"],
+  "additionalProperties": false
+}
+```
+
+In non-strict mode:
+
+- `bsonType` can be specified on any Zod type via `.meta()`
+- When both `type` and `bsonType` are present, `bsonType` takes precedence
+- Unrepresentable Zod types (like `z.instanceof()`) without a `bsonType`
+  override become empty schemas `{}`
+
+This is useful when you want your Zod schemas to provide accurate TypeScript
+types (e.g., `Uint8Array` instead of `unknown`) while still being convertible to
+MongoDB schemas.
 
 ### Number types
 
@@ -454,19 +502,31 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 ## Unsupported Zod APIs
 
 The following Zod APIs are not representable in JSON Schema and will throw an
-error if encountered:
+error if encountered in strict mode (the default):
 
 - `z.bigint()`
 - `z.uint64()`
 - `z.int64()`
 - `z.symbol()`
 - `z.void()`
-- `z.date()`
 - `z.map()`
 - `z.set()`
 - `z.transform()`
 - `z.nan()`
 - `z.custom()`
+- `z.instanceof()`
+
+> [!WARNING]
+> `z.date()` is **not** in this list. Zod's `toJSONSchema` throws on `z.date()`
+> because dates aren't representable in standard JSON Schema, but since `date`
+> is a native BSON type the mapping is unambiguous — `zodToMongoSchema`
+> automatically converts `z.date()` to `{ bsonType: "date" }` in both strict and
+> non-strict modes.
+
+In [non-strict mode](#non-strict-mode), these types won't throw. Instead, they
+produce empty schemas `{}` unless you provide a `bsonType` override via
+`.meta()`. This is particularly useful for `z.instanceof()` when you want to
+preserve TypeScript typing while mapping to BSON types like `binData`.
 
 ## Use `.meta()` judiciously
 
@@ -542,13 +602,12 @@ However, `zod-to-mongo-schema` expects you to use it **only for two purposes**:
    }
    ```
 
-2. **To specify a custom BSON type with `z.unknown` if the Zod API doesn't have
-   it:**
+2. **To specify a custom BSON type** (either for `z.unknown()` in strict mode or
+   any type in [non-strict mode](#non-strict-mode)):
 
    ```js
    const userSchema = z.object({
      _id: z.unknown().meta({ bsonType: "objectId" }),
-     createdAt: z.unknown().meta({ bsonType: "date" }),
    });
 
    const mongoSchema = zodToMongoSchema(userSchema);
@@ -561,12 +620,9 @@ However, `zod-to-mongo-schema` expects you to use it **only for two purposes**:
      "properties": {
        "_id": {
          "bsonType": "objectId"
-       },
-       "createdAt": {
-         "bsonType": "date"
        }
      },
-     "required": ["_id", "createdAt"],
+     "required": ["_id"],
      "additionalProperties": false
    }
    ```
@@ -598,7 +654,9 @@ console.log(JSON.stringify(mongoSchema, null, 2));
 ```
 
 However, you cannot specify `type` and `bsonType` simultaneously for a schema,
-since that would be invalid for MongoDB. If you do, an error will be thrown:
+since that would be invalid for MongoDB. In strict mode (the default), an error
+will be thrown. In non-strict mode, `bsonType` silently takes precedence and
+`type` is removed:
 
 ```ts
 const userSchema = z.object({
@@ -608,7 +666,10 @@ const mongoSchema = zodToMongoSchema(userSchema);
 ```
 
 ```bash
+# Strict mode (default):
 Error: Cannot specify both `type` and `bsonType` simultaneously.
+
+# Non-strict mode: bsonType wins, type is dropped
 ```
 
 Outside those two cases, the library assumes you know better than it — so
@@ -633,7 +694,7 @@ standard Zod APIs.
 | `binData`    | `.meta({ bsonType: "binData" })`    |
 | `objectId`   | `.meta({ bsonType: "objectId" })`   |
 | `bool`       | `z.boolean()`, `z.stringbool()`     |
-| `date`       | `.meta({ bsonType: "date" })`       |
+| `date`       | `z.date()`                          |
 | `null`       | `z.null()`                          |
 | `regex`      | `.meta({ bsonType: "regex" })`      |
 | `javascript` | `.meta({ bsonType: "javascript" })` |
